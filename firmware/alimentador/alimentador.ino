@@ -37,16 +37,16 @@
  ARDUINO UNO
  --------------------------------------------------------------
 
- D0  -> Serial RX
- D1  -> Serial TX
+ D0  -> HC-05 TX   (Serial RX)
+ D1  -> HC-05 RX   (Serial TX, con divisor de voltaje)
 
  D2  -> Buzzer pasivo
- D3  -> Botón de diagnóstico
- D4  -> Servo
+ D3  -> Botón pedir comida / agua
+ D4  -> Servo (comida)
 
- D5  -> Libre
+ D5  -> DHT11
 
- D6  -> RFID RST
+ D6  -> RTC DS1302 CE (RST)
 
  D7  -> 74HC595 DATA
  D8  -> 74HC595 CLOCK
@@ -59,28 +59,36 @@
 
  A0  -> Keypad C1
  A1  -> Keypad C2
- A2  -> Keypad C3
- A3  -> Keypad C4
+ A2  -> RTC DS1302 DAT (IO)
+ A3  -> RTC DS1302 CLK
 
  A4  -> LCD SDA
  A5  -> LCD SCL
+
+ RFID RST -> 3.3V fijo (reset por software)
 */
 
 
 const byte PIN_BUZZER = 2;
-const byte PIN_DIAG   = 3;
+const byte PIN_BOTON  = 3;
 const byte PIN_SERVO  = 4;
+const byte PIN_DHT    = 5;
 
-const byte RFID_RST = 6;
+const byte RTC_CE  = 6;
+const byte RTC_DAT = A2;
+const byte RTC_CLK = A3;
 
 const byte DATA  = 7;
 const byte CLOCK = 8;
 const byte LATCH = 9;
 
-const byte RFID_SS = 10;
+const byte RFID_SS  = 10;
+const byte RFID_RST = MFRC522::UNUSED_PIN;
 
-const byte columnas[4] = {
-  A0, A1, A2, A3
+const byte NUM_COLUMNAS = 2;
+
+const byte columnas[NUM_COLUMNAS] = {
+  A0, A1
 };
 
 
@@ -214,42 +222,55 @@ void actualizarRegistro()
 // 8. CONTROL DE LEDs
 // ==============================================================
 
+/*
+ Q4-Q7 controlan los LEDs y Q0-Q3 las filas del teclado.
+ La máscara B11110000 aísla los bits de los LEDs:
+
+   registro & ~MASCARA_LEDS  -> pone Q4-Q7 en 0, conserva Q0-Q3
+   bitSet(registro, n + 4)   -> enciende solo el LED n
+*/
+
+const byte MASCARA_LEDS = B11110000;
+
+const byte LED_VERDE    = 0;
+const byte LED_ROJO     = 1;
+const byte LED_AMARILLO = 2;
+const byte LED_AZUL     = 3;
+
+
 void apagarLEDs()
 {
-  /*
-   TODO - REGISTROS / OPERACIONES BINARIAS
+  registro &= ~MASCARA_LEDS;
 
-   Los LEDs se encuentran conectados a Q4-Q7.
-
-   Deben apagarse SIN modificar Q0-Q3,
-   ya que esos bits controlan las filas
-   del teclado.
-
-   Modificar la variable:
-
-       registro
-
-   y posteriormente actualizar el 74HC595.
-  */
+  actualizarRegistro();
 }
 
 
 void encenderLED(byte numero)
 {
-  /*
-   TODO - REGISTROS / OPERACIONES BINARIAS
+  if (numero > LED_AZUL)
+  {
+    return;
+  }
 
-   Encender solamente uno de los LEDs.
+  registro &= ~MASCARA_LEDS;
 
-       numero = 0 -> Q4 -> Verde
-       numero = 1 -> Q5 -> Rojo
-       numero = 2 -> Q6 -> Amarillo
-       numero = 3 -> Q7 -> Azul
+  bitSet(registro, numero + 4);
 
-   IMPORTANTE:
+  actualizarRegistro();
+}
 
-   No modificar Q0-Q3.
-  */
+
+void probarLEDs()
+{
+  for (byte led = LED_VERDE; led <= LED_AZUL; led++)
+  {
+    encenderLED(led);
+
+    delay(300);
+  }
+
+  apagarLEDs();
 }
 
 
@@ -576,7 +597,7 @@ void setup()
   // KEYPAD
   // ----------------------------------------------------------
 
-  for (byte i = 0; i < 4; i++)
+  for (byte i = 0; i < NUM_COLUMNAS; i++)
   {
     pinMode(columnas[i], INPUT_PULLUP);
   }
@@ -590,10 +611,10 @@ void setup()
 
 
   // ----------------------------------------------------------
-  // BOTÓN DIAGNÓSTICO
+  // BOTÓN
   // ----------------------------------------------------------
 
-  pinMode(PIN_DIAG, INPUT_PULLUP);
+  pinMode(PIN_BOTON, INPUT_PULLUP);
 
 
   // ----------------------------------------------------------
@@ -624,7 +645,7 @@ void setup()
   lcd.setCursor(0, 1);
   lcd.print("INICIANDO...");
 
-  delay(1500);
+  probarLEDs();
 
   reiniciarSistema();
 }
